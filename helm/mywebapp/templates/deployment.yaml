@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "mywebapp.fullname" . }}
+  namespace: {{ .Values.namespace }}
   labels:
     {{- include "mywebapp.labels" . | nindent 4 }}
 spec:
@@ -22,25 +23,35 @@ spec:
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+      {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "mywebapp.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}    
+      {{- range $container := .Values.containers }}
       containers:
-        - name: {{ .Chart.Name }}
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: 80
-              protocol: TCP
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          env:
-            {{- toYaml .Values.container.env | nindent 12 }}
+      - name: {{ $container.name }}
+        {{- with $container.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        image: "{{ $container.image.repository }}:{{ $container.image.tag }}"          
+        {{- with $container.env }}
+        env:
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $container.resources }}
+        resources:
+        {{- toYaml . | nindent 10 }}
+        {{- end }}        
+        imagePullPolicy: {{ $container.image.pullPolicy }}
+        ports:
+          - name: http
+            containerPort: {{ $container.port }}
+            protocol: TCP
+    {{- end }}            
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

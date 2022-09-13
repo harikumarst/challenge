@@ -2,9 +2,10 @@
 @model IndexModel
 @{
     ViewData["Title"] = "Home page";
+    var message = ViewData["GREET_VAR"];
 }
 
 <div class="text-center">
-    <h1 class="display-4">Welcome world</h1>
+    <h1 class="display-4">Hello from @message</h1>
     <p>Learn about <a href="https://docs.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
 </div>
