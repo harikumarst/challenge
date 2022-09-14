@@ -1,0 +1,100 @@
+parameters:
+- name: projectName
+  displayName: Name of the project, must be same as the Helm Chart name.
+  type: string
+- name: helmVersion
+  displayName: Version of Helm
+  type: string
+
+jobs:
+  - job: Prod_Deploy
+    displayName: "Release: Pull Helm -> Deploy to EKS"    
+    pool:
+      vmImage: 'windows-latest'
+    continueOnError: false    
+    steps:        
+    - task: HelmInstaller@1
+      displayName: 'Install Helm'
+      inputs:
+        helmVersionToInstall: ${{ parameters.helmVersion }}
+
+    - task: Bash@3
+      displayName: "Login to ECR, Helm Pull and Deploy"
+      inputs:
+        targetType: 'inline'
+        script: |
+            echo 'Using identity'
+            aws sts get-caller-identity
+            
+            ## ECR Login
+            export HELM_EXPERIMENTAL_OCI=1
+
+            # Login with Helm
+            echo 'HELM Login to ECR...'
+            aws ecr get-login-password \
+            --region $(awsECRRegion) | helm registry login \
+            --username AWS \
+            --password-stdin $(awsECRAccountId).dkr.ecr.$(awsECRRegion).amazonaws.com
+            
+            # Pull Helm Chart
+            repository_uri=$(aws ecr describe-repositories\
+            --repository-names ${{ parameters.projectName }} \
+            --region $(awsECRRegion) \
+            --registry-id  $(awsECRAccountId) \
+            --query "repositories[].repositoryUri" \
+            --output text)      
+            echo $repository_uri        
+            echo "Pulling helm chart from $repository_uri"
+            helm pull oci://$(aws ecr describe-repositories --repository-names ${{ parameters.projectName }} --region $(awsECRRegion) --registry-id  $(awsECRAccountId) --query "repositories[].repositoryUri" --output text) --version $(helmChartVersion)
+
+            # Get Kubeconfig
+            echo 'Connect to Amazon EKS cluster'
+            aws eks update-kubeconfig --region $(awsEKSRegion) --name $(awsEKSClusterName)
+            
+            # Deploy Helm Chart
+            echo 'Deploy Helm chart to EKS...'
+            chartPackage=${{ parameters.projectName }}-$(helmChartVersion).tgz
+            echo $(pwd)
+            echo "chart package to be installed - $chartPackage"
+            helm upgrade \
+              --namespace $(K8sNamespace) \
+              --install \
+              --wait \
+              --version $(helmChartVersion) \
+              --set application.name=${{ parameters.projectName }} \
+              --set containers[0].image.tag=$(Build.BuildId) \
+              --set appversion="$(Build.BuildId)" \
+              ${{ parameters.projectName }} \
+              $chartPackage \
+
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: |
+            # Get Kubeconfig
+            echo 'Connect to Amazon EKS cluster'
+            aws eks update-kubeconfig --region $(awsEKSRegion) --name $(awsEKSClusterName)
+            
+            echo "##[section]kubectl get all -n $(K8sNamespace)"
+            kubectl get all -n $(K8sNamespace)
+
+            echo "##[section]kubectl get deploy -n $(K8sNamespace)"
+            kubectl get deploy -n $(K8sNamespace)
+
+            echo "##[section]kubectl get services -n $(K8sNamespace)"
+            kubectl get services -n $(K8sNamespace)
+
+            echo "##[section]kubectl get pods -n $(K8sNamespace)"
+            kubectl get pods -n $(K8sNamespace)
+
+            echo "##[section]kubectl describe service webapp -n $(K8sNamespace)"
+            kubectl describe service webapp -n $(K8sNamespace)
+
+            echo "##[section]kubectl kubectl get secrets -n $(K8sNamespace)"
+            kubectl get secrets -n $(K8sNamespace)
+
+            echo "##[section]helm list -n $(K8sNamespace)"
+            helm list -n $(K8sNamespace)
+
+            echo "##[section]helm status ${{ parameters.projectName }} -n $(K8sNamespace)"
+            helm status ${{ parameters.projectName }} -n $(K8sNamespace)

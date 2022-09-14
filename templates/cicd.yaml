@@ -1,0 +1,59 @@
+parameters:
+- name: projectName
+  displayName: Name of the project, must be same as the Helm Chart name.
+  type: string
+  default: 'default'
+- name: helmVersion
+  displayName: Version of Helm
+  type: string
+  default: '3.4.0'
+- name: helmChartDirPath
+  displayName: Path of the directory containing the chart to be packaged, eg webapp/charts/webapp
+  type: string
+  default: '$(Build.SourcesDirectory)/helm/mywebapp'
+- name: dockerfilePath
+  displayName: Path of the Dockerfile, eg webapp/Dockerfile.
+  type: string
+  default: 'Dockerfile'
+- name: BuildVariableGroup
+  displayName: Build Variable Group
+  type: string
+  default: 'mywebappBuildVariables'
+- name: DeployVariableGroup
+  displayName: Deploy Variable Group
+  type: string
+  default: 'mywebappDeployVariables (Prod)'
+- name: AWSCredentialsVariableGroup
+  displayName: AWS Credentials Variable Group
+  type: string
+  default: 'mywebappAWSCredentials'
+
+
+stages:
+- stage: CI
+  displayName: "Build Docker Image and Helm Chart"
+  variables: 
+  - group: ${{parameters.BuildVariableGroup}}
+  - group: ${{parameters.AWSCredentialsVariableGroup}}
+  jobs:
+    - template: ./ci.yaml
+      parameters:
+        projectName: ${{ parameters.projectName }}
+        dockerfilePath: ${{ parameters.dockerfilePath }}
+        helmChartDirPath: ${{ parameters.helmChartDirPath }}
+        helmVersion: ${{ parameters.helmVersion }}
+
+- stage: CD
+  displayName: "Deploy Helm Chart to EKS"
+  dependsOn:
+  - CI
+  condition: succeeded()
+  variables: 
+  - group: ${{parameters.DeployVariableGroup}}
+  - group: ${{parameters.AWSCredentialsVariableGroup}}
+
+  jobs:
+    - template: ./cd.yaml
+      parameters:
+        projectName: ${{ parameters.projectName }}
+        helmVersion: ${{ parameters.helmVersion }}

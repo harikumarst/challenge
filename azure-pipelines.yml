@@ -1,0 +1,18 @@
+trigger:
+  batch: true
+  branches:
+    include: 
+    - 'master'
+    - 'azure-pipelines'
+    
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+#pool: self-hosted # If you are running self-hosted Azure DevOps Agents
+
+stages:
+# Refering the pipeline template, input parameter that are not specified will be added with defaults
+- template: ./templates/cicd.yaml
+  parameters:
+    projectName: mywebapp
